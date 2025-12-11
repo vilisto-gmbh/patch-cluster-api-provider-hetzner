@@ -11,7 +11,8 @@ on:
         type: string
 
 env:
-  IMAGE_NAME: cluster-api-provider-hetzner
+  REGISTRY: ghcr.io
+  IMAGE_NAME: vilisto-gmbh/cluster-api-provider-hetzner
   UPSTREAM_REPO: syself/cluster-api-provider-hetzner
 
 
@@ -49,7 +50,7 @@ jobs:
       - name: Login to GitHub Container Registry
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -89,7 +90,7 @@ jobs:
           file: ./upstream/images/caph/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ghcr.io/${{ env.GITHUB_REPOSITORY }}:${{ env.RELEASE_VERSION }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
           build-args: |
             LDFLAGS=${{ env.DOCKER_BUILD_LDFLAGS }}
 
@@ -99,4 +100,4 @@ jobs:
         run: |
           gh release create "${{ env.RELEASE_VERSION }}" \
               --title="${{ env.RELEASE_VERSION }}" \
-              --notes="docker pull ghcr.io/${{ env.GITHUB_REPOSITORY }}:${{ env.RELEASE_VERSION }}"
+              --notes="docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}"
