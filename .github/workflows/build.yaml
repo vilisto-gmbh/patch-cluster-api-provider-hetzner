@@ -37,6 +37,11 @@ jobs:
           fi
 
       - name: Verify Release Version
+        run: |
+          if [[ "$(gh release view $RELEASE_VERSION 2>&1)" != "release not found" ]]; then
+            echo "ERROR: release already exists"
+            exit 1
+          fi
 
       - name: Checkout Self
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
