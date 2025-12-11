@@ -59,6 +59,7 @@ jobs:
           repository: ${{ env.UPSTREAM_REPO }}
           ref: ${{ steps.release-version.outputs.RELEASE_VERSION }}
           path: upstream
+          fetch-tags: true
 
       - name: Setup Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
@@ -68,10 +69,7 @@ jobs:
       - name: Generate Build Flags
         id: build-flags
         run: |
-          DOCKER_BUILD_LDFLAGS="$(cd upstream && hack/version.sh)"
-          echo 'DOCKER_BUILD_LDFLAGS<<EOF' >> $GITHUB_ENV
-          echo $DOCKER_BUILD_LDFLAGS >> $GITHUB_ENV
-          echo 'EOF' >> $GITHUB_ENV
+          echo "DOCKER_BUILD_LDFLAGS=$(cd upstream && hack/version.sh)" >> $GITHUB_ENV
 
       - name: Apply Patches
         env:
