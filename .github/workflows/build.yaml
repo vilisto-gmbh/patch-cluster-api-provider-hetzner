@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           repository: ${{ env.UPSTREAM_REPO }}
-          ref: ${{ steps.release-version.outputs.RELEASE_VERSION }}
+          ref: ${{ env.RELEASE_VERSION }}
           path: upstream
           fetch-tags: true
 
@@ -69,7 +69,10 @@ jobs:
       - name: Generate Build Flags
         id: build-flags
         run: |
-          echo "DOCKER_BUILD_LDFLAGS=$(cd upstream && hack/version.sh)" >> $GITHUB_ENV
+          DOCKER_BUILD_LDFLAGS="$(cd upstream && hack/version.sh)"
+          echo 'DOCKER_BUILD_LDFLAGS<<EOF' >> $GITHUB_ENV
+          echo $DOCKER_BUILD_LDFLAGS >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
 
       - name: Apply Patches
         env:
@@ -85,16 +88,15 @@ jobs:
           context: upstream
           file: ./upstream/images/caph/Dockerfile
           push: true
-          build-args: |
-            LDFLAGS=${{ steps.build-flags.outputs.DOCKER_BUILD_LDFLAGS }}
-          tags: ${{ steps.release-version.outputs.RELEASE_VERSION }}
           platforms: linux/amd64
+          tags: ${{ env.RELEASE_VERSION }}
+          build-args: |
+            LDFLAGS=${{ env.DOCKER_BUILD_LDFLAGS }}
 
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release-version.outputs.RELEASE_VERSION }}
         run: |
-          gh release create "${{ env.tag }}" \
-              --title="${{ env.tag }}" \
-              --notes="docker pull ghcr.io/${{ env.GITHUB_REPOSITORY }}:${{ env.tag }}"
+          gh release create "${{ env.RELEASE_VERSION }}" \
+              --title="${{ env.RELEASE_VERSION }}" \
+              --notes="docker pull ghcr.io/${{ env.GITHUB_REPOSITORY }}:${{ env.RELEASE_VERSION }}"
