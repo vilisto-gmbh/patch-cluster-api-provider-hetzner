@@ -89,7 +89,7 @@ jobs:
           file: ./upstream/images/caph/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ env.RELEASE_VERSION }}
+          tags: ghcr.io/${{ env.GITHUB_REPOSITORY }}:${{ env.RELEASE_VERSION }}
           build-args: |
             LDFLAGS=${{ env.DOCKER_BUILD_LDFLAGS }}
 
