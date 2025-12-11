@@ -1,0 +1,97 @@
+name: Build patched release of cluster-api-provider-hetzner
+
+on:
+  schedule:
+    - cron:  '0 23 * * *' # Execute every day at 23:00
+
+  workflow_dispatch:
+    inputs:
+      releaseTag:
+        description: 'Tag of the cluster-api-provider-hetzner release you want to build'
+        type: string
+
+env:
+  IMAGE_NAME: cluster-api-provider-hetzner
+  UPSTREAM_REPO: syself/cluster-api-provider-hetzner
+
+
+jobs:
+  build-and-push:
+    name: "Build and Push"
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - name: Specify Release Version
+        id: release-version
+        env:
+          UPSTREAM_LATEST_RELEASE_URL: https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases/latest
+        run: |
+          if [[ "${{ inputs.releaseTag }}" != "" ]]; then
+            echo "RELEASE_VERSION=${{ inputs.releaseTag }}" >> $GITHUB_ENV
+          else
+            echo "RELEASE_VERSION=$(curl -sL ${{ env.UPSTREAM_LATEST_RELEASE_URL }} | jq -r '.tag_name')" >> $GITHUB_ENV
+          fi
+
+      - name: Verify Release Version
+
+      - name: Checkout Self
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Upstream
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ steps.release-version.outputs.RELEASE_VERSION }}
+          path: upstream
+
+      - name: Setup Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: 'upstream/go.mod'
+
+      - name: Generate Build Flags
+        id: build-flags
+        run: |
+          DOCKER_BUILD_LDFLAGS="$(cd upstream && hack/version.sh)"
+          echo 'DOCKER_BUILD_LDFLAGS<<EOF' >> $GITHUB_ENV
+          echo $DOCKER_BUILD_LDFLAGS >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+
+      - name: Apply Patches
+        env:
+          PATCH_FILE: patches/allow-vswitch-subnet.patch
+        run: |
+          git apply \
+            --directory upstream \
+            ${PATCH_FILE}
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: upstream
+          file: ./upstream/images/caph/Dockerfile
+          push: true
+          build-args: |
+            LDFLAGS=${{ steps.build-flags.outputs.DOCKER_BUILD_LDFLAGS }}
+          tags: ${{ steps.release-version.outputs.RELEASE_VERSION }}
+          platforms: linux/amd64
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.release-version.outputs.RELEASE_VERSION }}
+        run: |
+          gh release create "${{ env.tag }}" \
+              --title="${{ env.tag }}" \
+              --notes="docker pull ghcr.io/${{ env.GITHUB_REPOSITORY }}:${{ env.tag }}"
