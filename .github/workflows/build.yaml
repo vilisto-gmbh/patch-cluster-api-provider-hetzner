@@ -33,12 +33,12 @@ jobs:
           if [[ "${{ inputs.releaseTag }}" != "" ]]; then
             echo "RELEASE_VERSION=${{ inputs.releaseTag }}" >> $GITHUB_ENV
           else
-            echo "RELEASE_VERSION=$(curl -sL ${{ env.UPSTREAM_LATEST_RELEASE_URL }} | jq -r '.tag_name')" >> $GITHUB_ENV
+            echo "RELEASE_VERSION=$(curl --silent --location ${{ env.GITHUB_API_URL }}/repos/${{ env.UPSTREAM_REPO }}/releases/latest | jq -r '.tag_name')" >> $GITHUB_ENV
           fi
 
       - name: Verify Release Version
         run: |
-          if [[ "$(gh release view $RELEASE_VERSION 2>&1)" != "release not found" ]]; then
+          if [[ "$(curl --write-out '%{http_code}' --silent --output /dev/null --location ${{ env.GITHUB_API_URL }}/repos/${{ env.GITHUB_REPOSITORY }}/releases/tags/${{ env.RELEASE_VERSION }})" -eq 200 ]]; then
             echo "ERROR: release already exists"
             exit 1
           fi
