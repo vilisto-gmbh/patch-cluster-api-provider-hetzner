@@ -1,4 +1,4 @@
-name: Build patched release of cluster-api-provider-hetzner
+name: Release
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       releaseTag:
-        description: 'Tag of the cluster-api-provider-hetzner release you want to build'
+        description: 'Tag of the cluster-api-provider-hetzner release you want to use'
         type: string
 
 env:
@@ -17,8 +17,43 @@ env:
 
 
 jobs:
+  version:
+    name: "Version"
+    runs-on: ubuntu-latest
+
+    permissions: {}
+
+    outputs:
+      version: ${{ steps.define.outputs.RELEASE_VERSION }}
+      continue: ${{ steps.verify.outputs.CONTINUE }}
+
+    steps:
+      - name: Define Release Version
+        id: define
+        env:
+          UPSTREAM_LATEST_RELEASE_URL: https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases/latest
+        run: |
+          if [[ "${{ inputs.releaseTag }}" != "" ]]; then
+            echo "RELEASE_VERSION=${{ inputs.releaseTag }}" >> $GITHUB_OUTPUT
+          else
+            echo "RELEASE_VERSION=$(curl --silent --location ${{ github.api_url }}/repos/${{ env.UPSTREAM_REPO }}/releases/latest | jq -r '.tag_name')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify Release Version
+        id: verify
+        run: |
+          if [[ "$(curl --write-out '%{http_code}' --silent --output /dev/null --location ${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ steps.define.outputs.RELEASE_VERSION }})" -eq 200 ]]; then
+            echo "Release Version ${{ steps.define.outputs.RELEASE_VERSION }} already exists. Skipping Build job"
+            echo "CONTINUE=false" >> $GITHUB_OUTPUT
+          else
+            echo "CONTINUE=true" >> $GITHUB_OUTPUT
+          fi
+
+
   build-and-push:
     name: "Build and Push"
+    needs: version
+    if: needs.version.outputs.continue == 'true'
     runs-on: ubuntu-latest
 
     permissions:
@@ -26,24 +61,6 @@ jobs:
       contents: write
 
     steps:
-      - name: Specify Release Version
-        id: release-version
-        env:
-          UPSTREAM_LATEST_RELEASE_URL: https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases/latest
-        run: |
-          if [[ "${{ inputs.releaseTag }}" != "" ]]; then
-            echo "RELEASE_VERSION=${{ inputs.releaseTag }}" >> $GITHUB_ENV
-          else
-            echo "RELEASE_VERSION=$(curl --silent --location ${{ github.api_url }}/repos/${{ env.UPSTREAM_REPO }}/releases/latest | jq -r '.tag_name')" >> $GITHUB_ENV
-          fi
-
-      - name: Verify Release Version
-        run: |
-          if [[ "$(curl --write-out '%{http_code}' --silent --output /dev/null --location ${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ env.RELEASE_VERSION }})" -eq 200 ]]; then
-            echo "ERROR: release already exists"
-            exit 1
-          fi
-
       - name: Checkout Self
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
@@ -58,7 +75,7 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           repository: ${{ env.UPSTREAM_REPO }}
-          ref: ${{ env.RELEASE_VERSION }}
+          ref: ${{ needs.version.outputs.version }}
           path: upstream
           fetch-tags: true
 
@@ -90,7 +107,7 @@ jobs:
           file: ./upstream/images/caph/Dockerfile
           push: true
           platforms: linux/amd64
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}
           build-args: |
             LDFLAGS=${{ env.DOCKER_BUILD_LDFLAGS }}
 
@@ -98,6 +115,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ env.RELEASE_VERSION }}" \
-              --title="${{ env.RELEASE_VERSION }}" \
-              --notes="docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}"
+          gh release create "${{ needs.version.outputs.version }}" \
+              --title="${{ needs.version.outputs.version }}" \
+              --notes="docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
